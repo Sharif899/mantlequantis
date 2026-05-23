@@ -116,7 +116,7 @@ export default function LeaderboardPage() {
                   key={row.wallet}
                   className={clsx(
                     "border-b border-mantle-border transition-colors",
-                    row.isYou
+                    (row as any).isYou
                       ? "bg-[#1A1A2E] border-mantle-purple/30"
                       : "hover:bg-[#0D0D14]"
                   )}
@@ -130,9 +130,9 @@ export default function LeaderboardPage() {
                     </span>
                   </td>
                   <td className="py-3 px-3">
-                    <div className={clsx("font-medium", row.isYou && "text-mantle-purple")}>
+                    <div className={clsx("font-medium", (row as any).isYou && "text-mantle-purple")}>
                       {row.name}
-                      {row.isYou && <span className="ml-2 text-[10px] text-mantle-purple">(You)</span>}
+                      {(row as any).isYou && <span className="ml-2 text-[10px] text-mantle-purple">(You)</span>}
                     </div>
                     <div className="text-[10px] text-mantle-muted font-mono mt-0.5">{row.wallet}</div>
                   </td>
