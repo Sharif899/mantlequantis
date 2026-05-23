@@ -49,7 +49,7 @@ export default function LeaderboardPage() {
     .sort((a, b) => b.roi - a.roi)
     .map((e, i) => ({ ...e, rank: i + 1 }));
 
-  const yourRank = combined.find((e) => e.isYou)?.rank ?? "—";
+  const yourRank = combined.find((e) => (e as any).isYou)?.rank ?? "—";
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
