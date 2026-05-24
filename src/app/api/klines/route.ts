@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   try {
     // CoinGecko OHLC endpoint - free tier supports up to 30 days
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=2`,
+      `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=1`,
       {
         cache: "no-store",
         headers: { "x-cg-demo-api-key": apiKey },
