@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 import { STRATEGIES } from "@/lib/strategies";
 import { useStore } from "@/lib/store";
 import { Card, Badge, Button, SectionTitle } from "@/components/ui";
-import { TRADE_LOGGER_ABI, TRADE_LOGGER_ADDRESS, MANTLE_EXPLORER, logTradeOnChain } from "@/lib/mantle";
+import { TRADE_LOGGER_ABI, TRADE_LOGGER_ADDRESS, MANTLE_EXPLORER } from "@/lib/mantle";
 import type { Strategy } from "@/types";
 import clsx from "clsx";
 
@@ -76,7 +76,7 @@ export default function StrategiesPage() {
         erc8004TokenId,
       });
 
-      startAgentSimulation(selected.id, walletClient);
+      startAgentSimulation(selected.id);
 
       if (!erc8004TokenId) {
         showToast(`🤖 ${selected.name} deployed!`);
@@ -86,8 +86,8 @@ export default function StrategiesPage() {
     }
   }
 
-  function startAgentSimulation(strategyId: string, wc: any) {
-    const agentInterval = setInterval(async () => {
+  function startAgentSimulation(strategyId: string) {
+    const agentInterval = setInterval(() => {
       const store = useStore.getState();
       const agent = store.agents.find((a) => a.strategyId === strategyId && a.active);
       if (!agent) { clearInterval(agentInterval); return; }
@@ -97,31 +97,8 @@ export default function StrategiesPage() {
       const isWin = Math.random() < winRatePct;
       const pnlDelta = isWin ? Math.random() * 15 + 2 : -(Math.random() * 10 + 1);
       const price = 0.94 + Math.random() * 0.05;
-      const side = pnlDelta > 0 ? "buy" : "sell";
-      const amount = Math.abs(pnlDelta) * 10;
 
       store.agentTick(agent.id, pnlDelta, agent.pair, price);
-
-      // Log agent trade on-chain
-      if (wc && TRADE_LOGGER_ADDRESS) {
-        try {
-          const provider = new ethers.BrowserProvider(wc as any);
-          const signer = await provider.getSigner();
-          await logTradeOnChain(signer, {
-            id: Date.now().toString(),
-            pair: agent.pair,
-            side,
-            amount,
-            size: amount / price,
-            entryPrice: price,
-            strategy: agent.strategyName,
-            timestamp: Date.now(),
-            status: "closed",
-          });
-        } catch {
-          // Silent fail — don't block simulation
-        }
-      }
     }, 6000 + Math.random() * 4000);
   }
 
