@@ -28,7 +28,10 @@ export default function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-mantle-card border-b border-mantle-border flex items-center px-4 gap-0">
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 mr-4 shrink-0">
-        <img src="/logo.png" alt="MantleQuant" className="h-8 w-auto" />
+        <img src="/logo.png" alt="MantleQuant" className="h-7 w-7 rounded-lg" />
+        <span className="font-semibold text-white text-sm tracking-tight hidden sm:block">
+          MantleQuant
+        </span>
       </Link>
 
       {/* Nav links */}
