@@ -13,9 +13,13 @@ export async function GET(req: NextRequest) {
   const coinId = coinMap[symbol] || "mantle";
 
   try {
+    const apiKey = process.env.COINGECKO_API_KEY || "";
     const res = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`,
-      { cache: "no-store" }
+      {
+        cache: "no-store",
+        headers: { "x-cg-demo-api-key": apiKey },
+      }
     );
 
     if (!res.ok) {
