@@ -28,12 +28,7 @@ export default function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-mantle-card border-b border-mantle-border flex items-center px-4 gap-0">
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 mr-4 shrink-0">
-        <div className="w-7 h-7 rounded-lg bg-mantle-purple flex items-center justify-center text-white font-bold text-sm">
-          ⬡
-        </div>
-        <span className="font-semibold text-white text-sm tracking-tight hidden sm:block">
-          MantleQuant
-        </span>
+        <img src="/logo.png" alt="MantleQuant" className="h-8 w-auto" />
       </Link>
 
       {/* Nav links */}
@@ -83,14 +78,8 @@ export default function Navbar() {
             })}
           </div>
         </div>
-        <div
-          className={clsx(
-            "text-xs font-semibold num",
-            pnl >= 0 ? "text-mantle-teal" : "text-mantle-coral"
-          )}
-        >
-          {pnl >= 0 ? "+" : ""}
-          {pnlPct.toFixed(2)}%
+        <div className={clsx("text-xs font-semibold num", pnl >= 0 ? "text-mantle-teal" : "text-mantle-coral")}>
+          {pnl >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
         </div>
         {onChainTrades > 0 && (
           <div className="text-[10px] text-mantle-muted">
@@ -101,11 +90,7 @@ export default function Navbar() {
       </div>
 
       {/* Wallet connect */}
-      <ConnectButton
-        accountStatus="avatar"
-        chainStatus="icon"
-        showBalance={false}
-      />
+      <ConnectButton accountStatus="avatar" chainStatus="icon" showBalance={false} />
     </nav>
   );
 }
