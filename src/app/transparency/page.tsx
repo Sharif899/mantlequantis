@@ -15,7 +15,6 @@ import { format } from "date-fns";
 import clsx from "clsx";
 import type { OHLCCandle } from "@/types";
 
-// Human-readable explanation of each strategy's signal logic
 const STRATEGY_LOGIC_DOCS: Record<string, { steps: string[]; pseudocode: string }> = {
   momentum: {
     steps: [
@@ -63,10 +62,10 @@ const STRATEGY_LOGIC_DOCS: Record<string, { steps: string[]; pseudocode: string 
   last = closes[-1]
 
   if last < lowerBand and rsi < params.rsiOversold:
-    return BUY                            // price below lower band + oversold
+    return BUY
 
   if last > upperBand:
-    return SELL                           // price above upper band
+    return SELL
 
   return HOLD`,
   },
@@ -85,8 +84,8 @@ const STRATEGY_LOGIC_DOCS: Record<string, { steps: string[]; pseudocode: string 
     and event.usdValue > params.minWalletUsd:
       signal = {
         asset: event.asset,
-        side: event.action,          // accumulate → BUY
-        delay: params.followDelay,   // wait 30s default
+        side: event.action,
+        delay: params.followDelay,
         maxHold: params.exitAfterH,
       }
       schedule(execute, signal, after=delay)`,
@@ -103,12 +102,10 @@ const STRATEGY_LOGIC_DOCS: Record<string, { steps: string[]; pseudocode: string 
     pseudocode: `function rwaYieldHunter(yields, portfolio, params):
   best = max(yields, key=lambda y: y.apy)
   current = portfolio.currentHolding
-
   apyDiff = best.apy - current.apy
-  if apyDiff > params.minApyDiff:      // default: 0.5%
+  if apyDiff > params.minApyDiff:
     if portfolio.allocation[best] < params.maxAllocation:
-      rotate(from=current, to=best,
-             slippageTol=params.slippageTol)`,
+      rotate(from=current, to=best, slippageTol=params.slippageTol)`,
   },
   arb: {
     steps: [
@@ -123,7 +120,6 @@ const STRATEGY_LOGIC_DOCS: Record<string, { steps: string[]; pseudocode: string 
     priceMoe = moePools[token].price
     priceAgni = agniPools[token].price
     spread = abs(priceMoe - priceAgni) / min(priceMoe, priceAgni)
-
     if spread > params.minSpreadPct:
       estimatedSlippage = estimateSlippage(params.maxTradeUsdt)
       if estimatedSlippage < params.maxSlippage:
@@ -140,17 +136,9 @@ const STRATEGY_LOGIC_DOCS: Record<string, { steps: string[]; pseudocode: string 
       "6. Feature importance published on-chain so predictions are fully auditable",
     ],
     pseudocode: `function mlPredict(candles, params):
-  features = [
-    rsi(candles, 14),
-    emaRatio(candles, 9, 21),
-    bbPosition(candles, 20),
-    volumeZScore(candles, 20),
-    priceROC(candles, 5),
-    // ... 7 more features
-  ]
+  features = [rsi(candles, 14), emaRatio(candles, 9, 21), bbPosition(candles, 20), volumeZScore(candles, 20), priceROC(candles, 5)]
   prob = sigmoid(dot(features, MODEL_WEIGHTS))
-
-  if prob > params.confidenceThreshold:    // default: 0.70
+  if prob > params.confidenceThreshold:
     return BUY, confidence=prob
   elif prob < (1 - params.confidenceThreshold):
     return SELL, confidence=1-prob
@@ -177,79 +165,48 @@ export default function TransparencyPage() {
   useEffect(() => {
     if (!address || !TRADE_LOGGER_ADDRESS) return;
     setLoadingOnChain(true);
-    fetchOnChainTrades(address)
-      .then(setOnChainTrades)
-      .finally(() => setLoadingOnChain(false));
+    fetchOnChainTrades(address).then(setOnChainTrades).finally(() => setLoadingOnChain(false));
   }, [address]);
 
-  // Generate live signal for the selected strategy
-  const signal =
-    candles.length > 20
-      ? getSignalForStrategy(selectedStrategy, candles, {})
-      : null;
+  const signal = candles.length > 20 ? getSignalForStrategy(selectedStrategy, candles, {}) : null;
 
-  // Trades filtered by strategy
-  const strategyTrades = portfolio.trades.filter(
-    (t) => t.strategy === strategy.name || t.strategy === strategy.id
-  );
+  // Fixed filter — matches by strategy name, id, or partial match
+  const strategyTrades = portfolio.trades.filter((t) => {
+    const tradeSt = (t.strategy || "").toLowerCase();
+    const stratId = strategy.id.toLowerCase();
+    const stratName = strategy.name.toLowerCase();
+    return (
+      tradeSt === stratId ||
+      tradeSt === stratName ||
+      tradeSt.includes(stratId) ||
+      stratName.includes(tradeSt) ||
+      tradeSt.replace(/\s+/g, "") === stratName.replace(/\s+/g, "")
+    );
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-white">Transparency Center</h1>
-        <p className="text-xs text-mantle-muted mt-1">
-          Every AI decision explained. Every trade verifiable on-chain. No black boxes.
-        </p>
+        <p className="text-xs text-mantle-muted mt-1">Every AI decision explained. Every trade verifiable on-chain. No black boxes.</p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard
           label="Trades Logged On-chain"
           value={onChainTrades.length > 0 ? onChainTrades.length.toString() : portfolio.trades.filter((t) => t.txHash).length.toString()}
-          sub={
-            TRADE_LOGGER_ADDRESS
-              ? <a href={`${MANTLE_EXPLORER}/address/${TRADE_LOGGER_ADDRESS}`} target="_blank" rel="noopener noreferrer" className="text-mantle-purple hover:underline">View contract →</a>
-              : "Deploy contract to enable"
-          }
+          sub={TRADE_LOGGER_ADDRESS ? <a href={`${MANTLE_EXPLORER}/address/${TRADE_LOGGER_ADDRESS}`} target="_blank" rel="noopener noreferrer" className="text-mantle-purple hover:underline">View contract →</a> : "Deploy contract to enable"}
         />
-        <StatCard
-          label="Strategies Available"
-          value={STRATEGIES.length.toString()}
-          sub="All logic open-source"
-        />
-        <StatCard
-          label="Active Agents"
-          value={agents.filter((a) => a.active).length.toString()}
-          sub={agents.filter((a) => a.erc8004TokenId).length + " registered on-chain"}
-        />
-        <StatCard
-          label="Contract"
-          value={TRADE_LOGGER_ADDRESS ? "Deployed ✅" : "Not deployed"}
-          sub={
-            TRADE_LOGGER_ADDRESS
-              ? `${TRADE_LOGGER_ADDRESS.slice(0, 8)}…${TRADE_LOGGER_ADDRESS.slice(-6)}`
-              : "See README to deploy"
-          }
-          positive={!!TRADE_LOGGER_ADDRESS}
-        />
+        <StatCard label="Strategies Available" value={STRATEGIES.length.toString()} sub="All logic open-source" />
+        <StatCard label="Active Agents" value={agents.filter((a) => a.active).length.toString()} sub={agents.filter((a) => a.erc8004TokenId).length + " registered on-chain"} />
+        <StatCard label="Contract" value={TRADE_LOGGER_ADDRESS ? "Deployed ✅" : "Not deployed"} sub={TRADE_LOGGER_ADDRESS ? `${TRADE_LOGGER_ADDRESS.slice(0, 8)}…${TRADE_LOGGER_ADDRESS.slice(-6)}` : "See README to deploy"} positive={!!TRADE_LOGGER_ADDRESS} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
-        {/* Strategy selector */}
         <div className="space-y-2">
           <SectionTitle>Select Strategy</SectionTitle>
           {STRATEGIES.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setSelectedStrategy(s.id)}
-              className={clsx(
-                "w-full text-left px-4 py-3 rounded-xl border transition-all",
-                selectedStrategy === s.id
-                  ? "border-mantle-purple bg-[#1A1A30] text-white"
-                  : "border-mantle-border bg-mantle-card text-mantle-muted hover:text-white"
-              )}
-            >
+            <button key={s.id} onClick={() => setSelectedStrategy(s.id)} className={clsx("w-full text-left px-4 py-3 rounded-xl border transition-all", selectedStrategy === s.id ? "border-mantle-purple bg-[#1A1A30] text-white" : "border-mantle-border bg-mantle-card text-mantle-muted hover:text-white")}>
               <div className="flex items-center gap-2">
                 <span>{s.icon}</span>
                 <span className="text-sm font-medium">{s.name}</span>
@@ -258,31 +215,21 @@ export default function TransparencyPage() {
           ))}
         </div>
 
-        {/* Main content */}
         <div>
-          {/* Strategy header */}
           <Card className="mb-4">
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <span className="text-2xl">{strategy.icon}</span>
                   <h2 className="text-lg font-semibold text-white">{strategy.name}</h2>
-                  <Badge variant={{ Low: "green", Medium: "amber", High: "red" }[strategy.risk] as any}>
-                    {strategy.risk} Risk
-                  </Badge>
+                  <Badge variant={{ Low: "green", Medium: "amber", High: "red" }[strategy.risk] as any}>{strategy.risk} Risk</Badge>
                 </div>
                 <p className="text-sm text-mantle-muted">{strategy.description}</p>
               </div>
-              {/* Live signal */}
               {signal && (
                 <div className="text-right shrink-0 ml-4">
                   <div className="text-xs text-mantle-muted mb-1">Current Signal</div>
-                  <Badge
-                    variant={signal.signal === "BUY" ? "green" : signal.signal === "SELL" ? "red" : "gray"}
-                    className="text-sm px-3 py-1"
-                  >
-                    {signal.signal}
-                  </Badge>
+                  <Badge variant={signal.signal === "BUY" ? "green" : signal.signal === "SELL" ? "red" : "gray"} className="text-sm px-3 py-1">{signal.signal}</Badge>
                   <div className="text-xs text-mantle-muted mt-1">{signal.confidence}% confidence</div>
                   <div className="text-xs text-mantle-muted mt-0.5 max-w-[180px]">{signal.reason}</div>
                 </div>
@@ -290,19 +237,9 @@ export default function TransparencyPage() {
             </div>
           </Card>
 
-          {/* Tabs */}
           <div className="flex border-b border-mantle-border mb-4">
             {(["logic", "decisions", "onchain"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={clsx(
-                  "px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize",
-                  activeTab === tab
-                    ? "border-mantle-purple text-mantle-purple"
-                    : "border-transparent text-mantle-muted hover:text-white"
-                )}
-              >
+              <button key={tab} onClick={() => setActiveTab(tab)} className={clsx("px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize", activeTab === tab ? "border-mantle-purple text-mantle-purple" : "border-transparent text-mantle-muted hover:text-white")}>
                 {tab === "logic" && "📐 Strategy Logic"}
                 {tab === "decisions" && "🧠 AI Decisions"}
                 {tab === "onchain" && "⛓️ On-chain Audit"}
@@ -310,33 +247,17 @@ export default function TransparencyPage() {
             ))}
           </div>
 
-          {/* Tab: Logic */}
           {activeTab === "logic" && logicDoc && (
             <div className="space-y-4">
               <Card>
                 <SectionTitle>How It Works — Step by Step</SectionTitle>
-                <ol className="space-y-2">
-                  {logicDoc.steps.map((step, i) => (
-                    <li key={i} className="text-sm text-mantle-muted leading-relaxed">
-                      {step}
-                    </li>
-                  ))}
-                </ol>
+                <ol className="space-y-2">{logicDoc.steps.map((step, i) => <li key={i} className="text-sm text-mantle-muted leading-relaxed">{step}</li>)}</ol>
               </Card>
-
               <Card>
                 <SectionTitle>Signal Generation Pseudocode</SectionTitle>
-                <pre className="text-xs text-mantle-teal font-mono bg-[#050508] rounded-lg p-4 overflow-x-auto leading-relaxed whitespace-pre-wrap">
-                  {logicDoc.pseudocode}
-                </pre>
-                <p className="text-xs text-mantle-muted mt-3">
-                  Full TypeScript implementation:{" "}
-                  <code className="bg-[#0D0D14] px-1.5 py-0.5 rounded text-mantle-purple">
-                    src/lib/strategies.ts
-                  </code>
-                </p>
+                <pre className="text-xs text-mantle-teal font-mono bg-[#050508] rounded-lg p-4 overflow-x-auto leading-relaxed whitespace-pre-wrap">{logicDoc.pseudocode}</pre>
+                <p className="text-xs text-mantle-muted mt-3">Full TypeScript implementation: <code className="bg-[#0D0D14] px-1.5 py-0.5 rounded text-mantle-purple">src/lib/strategies.ts</code></p>
               </Card>
-
               <Card>
                 <SectionTitle>BGA Alignment</SectionTitle>
                 <p className="text-sm text-mantle-muted leading-relaxed">{strategy.bgaAlignment}</p>
@@ -344,16 +265,11 @@ export default function TransparencyPage() {
             </div>
           )}
 
-          {/* Tab: Decisions */}
           {activeTab === "decisions" && (
             <Card>
               <SectionTitle>Trade Decisions — {strategy.name}</SectionTitle>
               {strategyTrades.length === 0 ? (
-                <EmptyState
-                  icon="🧠"
-                  title="No decisions yet"
-                  sub={`Deploy ${strategy.name} to see AI decision log`}
-                />
+                <EmptyState icon="🧠" title="No decisions yet" sub={`Deploy ${strategy.name} and execute trades to see the AI decision log`} />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -367,42 +283,13 @@ export default function TransparencyPage() {
                     <tbody>
                       {strategyTrades.slice().reverse().map((t) => (
                         <tr key={t.id} className="border-b border-mantle-border hover:bg-[#0D0D14] transition-colors">
-                          <td className="py-2.5 px-3 text-xs text-mantle-muted num">
-                            {format(new Date(t.timestamp), "HH:mm:ss")}
-                          </td>
+                          <td className="py-2.5 px-3 text-xs text-mantle-muted num">{format(new Date(t.timestamp), "HH:mm:ss")}</td>
                           <td className="py-2.5 px-3 font-medium">{t.pair}</td>
-                          <td className="py-2.5 px-3">
-                            <Badge variant={t.side === "buy" ? "green" : "red"} className="text-[10px]">
-                              {t.side.toUpperCase()}
-                            </Badge>
-                          </td>
-                          <td className="py-2.5 px-3 num text-xs">
-                            ${t.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                          </td>
+                          <td className="py-2.5 px-3"><Badge variant={t.side === "buy" ? "green" : "red"} className="text-[10px]">{t.side.toUpperCase()}</Badge></td>
+                          <td className="py-2.5 px-3 num text-xs">${t.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                           <td className="py-2.5 px-3 num">${t.amount.toFixed(0)}</td>
-                          <td className="py-2.5 px-3">
-                            {t.pnl != null ? (
-                              <span className={clsx("num font-semibold", t.pnl >= 0 ? "text-mantle-teal" : "text-mantle-coral")}>
-                                {t.pnl >= 0 ? "+" : ""}${t.pnl.toFixed(2)}
-                              </span>
-                            ) : (
-                              <span className="text-mantle-muted text-xs">Open</span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            {t.txHash ? (
-                              <a
-                                href={getExplorerTxUrl(t.txHash)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-mantle-purple hover:underline font-mono"
-                              >
-                                {t.txHash.slice(0, 8)}…{t.txHash.slice(-4)}
-                              </a>
-                            ) : (
-                              <span className="text-xs text-mantle-muted">—</span>
-                            )}
-                          </td>
+                          <td className="py-2.5 px-3">{t.pnl != null ? <span className={clsx("num font-semibold", t.pnl >= 0 ? "text-mantle-teal" : "text-mantle-coral")}>{t.pnl >= 0 ? "+" : ""}${t.pnl.toFixed(2)}</span> : <span className="text-mantle-muted text-xs">Open</span>}</td>
+                          <td className="py-2.5 px-3">{t.txHash ? <a href={getExplorerTxUrl(t.txHash)} target="_blank" rel="noopener noreferrer" className="text-xs text-mantle-purple hover:underline font-mono">{t.txHash.slice(0, 8)}…{t.txHash.slice(-4)}</a> : <span className="text-xs text-mantle-muted">—</span>}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -412,41 +299,22 @@ export default function TransparencyPage() {
             </Card>
           )}
 
-          {/* Tab: On-chain */}
           {activeTab === "onchain" && (
             <div className="space-y-4">
               <Card>
                 <SectionTitle>On-chain Trade Log — Mantle Sepolia</SectionTitle>
-
                 {!TRADE_LOGGER_ADDRESS ? (
                   <div className="px-4 py-6 text-center">
                     <div className="text-3xl mb-3 opacity-30">⛓️</div>
                     <div className="text-sm font-medium text-mantle-muted mb-2">Contract Not Deployed</div>
-                    <div className="text-xs text-mantle-muted mb-4">
-                      Deploy <code className="bg-[#0D0D14] px-1 rounded">MantleQuantTradeLogger.sol</code> to
-                      Mantle Sepolia and add the address to <code className="bg-[#0D0D14] px-1 rounded">.env.local</code>
-                    </div>
-                    <a
-                      href="https://faucet.sepolia.mantle.xyz"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-mantle-purple hover:underline"
-                    >
-                      Get testnet MNT from faucet →
-                    </a>
+                    <a href="https://faucet.sepolia.mantle.xyz" target="_blank" rel="noopener noreferrer" className="text-xs text-mantle-purple hover:underline">Get testnet MNT from faucet →</a>
                   </div>
                 ) : !address ? (
                   <EmptyState icon="🔐" title="Connect wallet" sub="Connect to see your on-chain trade log" />
                 ) : loadingOnChain ? (
-                  <div className="text-center py-8 text-sm text-mantle-muted">
-                    Loading on-chain trades…
-                  </div>
+                  <div className="text-center py-8 text-sm text-mantle-muted">Loading on-chain trades…</div>
                 ) : onChainTrades.length === 0 ? (
-                  <EmptyState
-                    icon="📋"
-                    title="No on-chain trades yet"
-                    sub="Execute a trade to log it to Mantle Sepolia"
-                  />
+                  <EmptyState icon="📋" title="No on-chain trades yet" sub="Execute a trade to log it to Mantle Sepolia" />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -460,28 +328,13 @@ export default function TransparencyPage() {
                       <tbody>
                         {onChainTrades.map((t, i) => (
                           <tr key={i} className="border-b border-mantle-border hover:bg-[#0D0D14] transition-colors">
-                            <td className="py-2.5 px-3">
-                              <a
-                                href={getExplorerTxUrl(t.txHash)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-mantle-purple hover:underline font-mono"
-                              >
-                                {t.txHash.slice(0, 10)}…{t.txHash.slice(-4)}
-                              </a>
-                            </td>
+                            <td className="py-2.5 px-3"><a href={getExplorerTxUrl(t.txHash)} target="_blank" rel="noopener noreferrer" className="text-xs text-mantle-purple hover:underline font-mono">{t.txHash.slice(0, 10)}…{t.txHash.slice(-4)}</a></td>
                             <td className="py-2.5 px-3 font-medium">{t.pair}</td>
-                            <td className="py-2.5 px-3">
-                              <Badge variant={t.side === "buy" ? "green" : "red"} className="text-[10px]">
-                                {t.side.toUpperCase()}
-                              </Badge>
-                            </td>
+                            <td className="py-2.5 px-3"><Badge variant={t.side === "buy" ? "green" : "red"} className="text-[10px]">{t.side.toUpperCase()}</Badge></td>
                             <td className="py-2.5 px-3 num">${t.amount?.toFixed(2)}</td>
                             <td className="py-2.5 px-3 num text-xs">${t.price?.toFixed(4)}</td>
                             <td className="py-2.5 px-3 text-xs text-mantle-muted">{t.strategyId}</td>
-                            <td className="py-2.5 px-3 text-xs text-mantle-muted num">
-                              {t.timestamp ? format(new Date(t.timestamp * 1000), "MMM d HH:mm") : "—"}
-                            </td>
+                            <td className="py-2.5 px-3 text-xs text-mantle-muted num">{t.timestamp ? format(new Date(t.timestamp * 1000), "MMM d HH:mm") : "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -490,41 +343,25 @@ export default function TransparencyPage() {
                 )}
               </Card>
 
-              {/* Local trades with tx hashes */}
               {portfolio.trades.filter((t) => t.txHash).length > 0 && (
                 <Card>
                   <SectionTitle>Local Trades with On-chain Record</SectionTitle>
                   <div className="space-y-0">
-                    {portfolio.trades
-                      .filter((t) => t.txHash)
-                      .slice()
-                      .reverse()
-                      .map((t) => (
-                        <div key={t.id} className="flex items-center justify-between py-3 border-b border-mantle-border last:border-0">
-                          <div className="flex items-center gap-3">
-                            <Badge variant={t.side === "buy" ? "green" : "red"} className="text-[10px]">
-                              {t.side.toUpperCase()}
-                            </Badge>
-                            <div>
-                              <div className="text-sm font-medium">{t.pair}</div>
-                              <div className="text-xs text-mantle-muted">{t.strategy}</div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <a
-                              href={getExplorerTxUrl(t.txHash!)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-mantle-purple hover:underline font-mono"
-                            >
-                              ⛓️ {t.txHash!.slice(0, 10)}…
-                            </a>
-                            <div className="text-xs text-mantle-muted mt-0.5">
-                              {format(new Date(t.timestamp), "HH:mm:ss")}
-                            </div>
+                    {portfolio.trades.filter((t) => t.txHash).slice().reverse().map((t) => (
+                      <div key={t.id} className="flex items-center justify-between py-3 border-b border-mantle-border last:border-0">
+                        <div className="flex items-center gap-3">
+                          <Badge variant={t.side === "buy" ? "green" : "red"} className="text-[10px]">{t.side.toUpperCase()}</Badge>
+                          <div>
+                            <div className="text-sm font-medium">{t.pair}</div>
+                            <div className="text-xs text-mantle-muted">{t.strategy}</div>
                           </div>
                         </div>
-                      ))}
+                        <div className="text-right">
+                          <a href={getExplorerTxUrl(t.txHash!)} target="_blank" rel="noopener noreferrer" className="text-xs text-mantle-purple hover:underline font-mono">⛓️ {t.txHash!.slice(0, 10)}…</a>
+                          <div className="text-xs text-mantle-muted mt-0.5">{format(new Date(t.timestamp), "HH:mm:ss")}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </Card>
               )}
