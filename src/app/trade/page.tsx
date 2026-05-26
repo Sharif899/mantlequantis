@@ -23,6 +23,7 @@ export default function TradePage() {
   const [activeTab, setActiveTab] = useState<Tab>("Buy");
   const [buyAmount, setBuyAmount] = useState("100");
   const [sellAmount, setSellAmount] = useState("");
+  const [limitPrice, setLimitPrice] = useState("");
   const [orderType, setOrderType] = useState<"Market" | "Limit">("Market");
   const [candles, setCandles] = useState<OHLCCandle[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -38,11 +39,15 @@ export default function TradePage() {
   const hasSellable = pos && pos.size > 0.0001;
   const tokenSymbol = selectedPair.split("/")[0];
 
+  // Use limit price if set, otherwise use market price
+  const executionPrice = orderType === "Limit" && parseFloat(limitPrice) > 0
+    ? parseFloat(limitPrice)
+    : currentPrice;
+
   useEffect(() => {
     fetchKlines(selectedPair, "15", 80).then(setCandles);
   }, [selectedPair]);
 
-  // When pair changes, reset sell amount to full position
   useEffect(() => {
     if (pos && pos.size > 0.0001) {
       setSellAmount(pos.size.toFixed(4));
@@ -50,6 +55,13 @@ export default function TradePage() {
       setSellAmount("");
     }
   }, [selectedPair, pos?.size]);
+
+  // Auto-fill limit price with current price when switching to Limit
+  useEffect(() => {
+    if (orderType === "Limit" && currentPrice > 0 && !limitPrice) {
+      setLimitPrice(currentPrice.toFixed(currentPrice > 100 ? 2 : 4));
+    }
+  }, [orderType, currentPrice]);
 
   const showToast = (msg: string, type: "success" | "error" | "info" = "info") => {
     setToast({ msg, type });
@@ -59,9 +71,10 @@ export default function TradePage() {
   async function handleTrade(side: "buy" | "sell") {
     if (!isConnected) { showToast("Connect your wallet first", "error"); return; }
     if (currentPrice === 0) { showToast("Price not loaded yet", "error"); return; }
+    if (orderType === "Limit" && (!limitPrice || parseFloat(limitPrice) <= 0)) {
+      showToast("Enter a limit price", "error"); return;
+    }
 
-    // For buy: amount is in USDT
-    // For sell: amount is in tokens, convert to USDT
     let amountUsdt: number;
     if (side === "buy") {
       amountUsdt = parseFloat(buyAmount);
@@ -70,7 +83,7 @@ export default function TradePage() {
       const tokenAmt = parseFloat(sellAmount);
       if (isNaN(tokenAmt) || tokenAmt <= 0) { showToast("Enter amount to sell", "error"); return; }
       if (!pos || tokenAmt > pos.size) { showToast("Insufficient position", "error"); return; }
-      amountUsdt = tokenAmt * currentPrice;
+      amountUsdt = tokenAmt * executionPrice;
     }
 
     setSubmitting(true);
@@ -87,8 +100,8 @@ export default function TradePage() {
             pair: selectedPair,
             side,
             amount: amountUsdt,
-            size: amountUsdt / currentPrice,
-            entryPrice: currentPrice,
+            size: amountUsdt / executionPrice,
+            entryPrice: executionPrice,
             strategy: "Manual",
             timestamp: Date.now(),
             status: side === "buy" ? "open" : "closed",
@@ -110,7 +123,7 @@ export default function TradePage() {
         pair: selectedPair,
         side,
         amountUsdt,
-        price: currentPrice,
+        price: executionPrice,
         strategy: "Manual",
         txHash,
       });
@@ -122,7 +135,7 @@ export default function TradePage() {
 
       if (!txHash) {
         showToast(
-          `${side === "buy" ? "📈 Bought" : "📉 Sold"} ${trade.size.toFixed(4)} ${tokenSymbol} @ $${currentPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}`,
+          `${side === "buy" ? "📈 Bought" : "📉 Sold"} ${trade.size.toFixed(4)} ${tokenSymbol} @ $${executionPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}`,
           "success"
         );
       }
@@ -138,9 +151,29 @@ export default function TradePage() {
 
   const pctSell = (p: number) => {
     if (!pos || pos.size <= 0) return;
-    const val = (pos.size * p) / 100;
-    setSellAmount(val.toFixed(4));
+    setSellAmount(((pos.size * p) / 100).toFixed(4));
   };
+
+  const LimitPriceInput = () => (
+    <div className="mb-3">
+      <div className="flex justify-between mb-1.5">
+        <label className="text-xs text-mantle-muted">Limit Price (USDT)</label>
+        <span className="text-xs text-mantle-muted">
+          Market: <span className="text-white cursor-pointer hover:text-mantle-purple" onClick={() => setLimitPrice(currentPrice.toFixed(currentPrice > 100 ? 2 : 4))}>
+            ${currentPrice.toFixed(currentPrice > 100 ? 2 : 4)}
+          </span>
+        </span>
+      </div>
+      <input
+        type="number"
+        value={limitPrice}
+        step={currentPrice > 100 ? "0.01" : "0.0001"}
+        onChange={(e) => setLimitPrice(e.target.value)}
+        className="w-full bg-[#0D0D14] border border-mantle-purple/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple num"
+        placeholder={`Enter limit price`}
+      />
+    </div>
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -155,7 +188,6 @@ export default function TradePage() {
         </div>
       )}
 
-      {/* On-chain status banner */}
       <div className={clsx(
         "flex items-center gap-3 px-4 py-3 rounded-xl border mb-5 text-sm",
         contractDeployed ? "bg-[#0D2E20] border-mantle-teal text-mantle-teal" : "bg-[#1A1A14] border-amber-800 text-amber-400"
@@ -173,7 +205,6 @@ export default function TradePage() {
         )}
       </div>
 
-      {/* Pair selector */}
       <div className="flex items-center gap-3 mb-5 overflow-x-auto pb-1">
         {TRADE_PAIRS.map((pair) => {
           const t = tickers[pair];
@@ -212,11 +243,12 @@ export default function TradePage() {
               <>
                 <div className="mb-3">
                   <label className="text-xs text-mantle-muted mb-1.5 block">Order Type</label>
-                  <select value={orderType} onChange={(e) => setOrderType(e.target.value as any)} className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple">
+                  <select value={orderType} onChange={(e) => { setOrderType(e.target.value as any); setLimitPrice(""); }} className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple">
                     <option>Market</option>
                     <option>Limit</option>
                   </select>
                 </div>
+                {orderType === "Limit" && <LimitPriceInput />}
                 <div className="mb-3">
                   <div className="flex justify-between mb-1.5">
                     <label className="text-xs text-mantle-muted">Amount (USDT)</label>
@@ -229,13 +261,14 @@ export default function TradePage() {
                     <button key={p} onClick={() => pctBuy(p)} className="flex-1 py-1.5 text-xs border border-mantle-border rounded-lg text-mantle-muted hover:border-mantle-purple hover:text-mantle-purple transition-colors">{p}%</button>
                   ))}
                 </div>
-                {currentPrice > 0 && parseFloat(buyAmount) > 0 && (
+                {executionPrice > 0 && parseFloat(buyAmount) > 0 && (
                   <div className="text-xs text-mantle-muted mb-3">
-                    ≈ {(parseFloat(buyAmount) / currentPrice).toFixed(4)} {tokenSymbol}
+                    ≈ {(parseFloat(buyAmount) / executionPrice).toFixed(4)} {tokenSymbol}
+                    {orderType === "Limit" && <span className="ml-2 text-mantle-purple">@ limit ${parseFloat(limitPrice).toFixed(4)}</span>}
                   </div>
                 )}
                 <Button variant="success" className="w-full" loading={submitting || loggingOnChain} onClick={() => handleTrade("buy")}>
-                  {loggingOnChain ? "Logging on Mantle…" : `Buy ${tokenSymbol}`}
+                  {loggingOnChain ? "Logging on Mantle…" : `${orderType === "Limit" ? "Place Limit Buy" : "Buy"} ${tokenSymbol}`}
                 </Button>
               </>
             )}
@@ -244,17 +277,16 @@ export default function TradePage() {
               <>
                 <div className="mb-3">
                   <label className="text-xs text-mantle-muted mb-1.5 block">Order Type</label>
-                  <select value={orderType} onChange={(e) => setOrderType(e.target.value as any)} className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple">
+                  <select value={orderType} onChange={(e) => { setOrderType(e.target.value as any); setLimitPrice(""); }} className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple">
                     <option>Market</option>
                     <option>Limit</option>
                   </select>
                 </div>
+                {orderType === "Limit" && <LimitPriceInput />}
                 <div className="mb-3">
                   <div className="flex justify-between mb-1.5">
                     <label className="text-xs text-mantle-muted">Amount ({tokenSymbol})</label>
-                    <span className="text-xs text-mantle-muted">
-                      Available: <span className="text-white">{pos ? pos.size.toFixed(4) : "0"} {tokenSymbol}</span>
-                    </span>
+                    <span className="text-xs text-mantle-muted">Available: <span className="text-white">{pos ? pos.size.toFixed(4) : "0"} {tokenSymbol}</span></span>
                   </div>
                   <input type="number" value={sellAmount} min="0" step="0.0001" onChange={(e) => setSellAmount(e.target.value)} className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple num" placeholder={`Enter ${tokenSymbol} amount`} />
                 </div>
@@ -263,13 +295,14 @@ export default function TradePage() {
                     <button key={p} onClick={() => pctSell(p)} className="flex-1 py-1.5 text-xs border border-mantle-border rounded-lg text-mantle-muted hover:border-mantle-purple hover:text-mantle-purple transition-colors">{p}%</button>
                   ))}
                 </div>
-                {currentPrice > 0 && parseFloat(sellAmount) > 0 && (
+                {executionPrice > 0 && parseFloat(sellAmount) > 0 && (
                   <div className="text-xs text-mantle-muted mb-3">
-                    ≈ ${(parseFloat(sellAmount) * currentPrice).toFixed(2)} USDT
+                    ≈ ${(parseFloat(sellAmount) * executionPrice).toFixed(2)} USDT
+                    {orderType === "Limit" && <span className="ml-2 text-mantle-purple">@ limit ${parseFloat(limitPrice).toFixed(4)}</span>}
                   </div>
                 )}
                 <Button variant="danger" className="w-full" loading={submitting || loggingOnChain} onClick={() => handleTrade("sell")} disabled={!hasSellable}>
-                  {loggingOnChain ? "Logging on Mantle…" : hasSellable ? `Sell ${tokenSymbol}` : `No ${tokenSymbol} position`}
+                  {loggingOnChain ? "Logging on Mantle…" : hasSellable ? `${orderType === "Limit" ? "Place Limit Sell" : "Sell"} ${tokenSymbol}` : `No ${tokenSymbol} position`}
                 </Button>
               </>
             )}
