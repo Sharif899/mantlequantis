@@ -68,6 +68,14 @@ export default function TradePage() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Allow only valid decimal input
+  const handleDecimalInput = (value: string, setter: (v: string) => void) => {
+    // Allow empty, digits, and a single decimal point
+    if (value === "" || /^\d*\.?\d*$/.test(value)) {
+      setter(value);
+    }
+  };
+
   async function handleTrade(side: "buy" | "sell") {
     if (!isConnected) { showToast("Connect your wallet first", "error"); return; }
     if (currentPrice === 0) { showToast("Price not loaded yet", "error"); return; }
@@ -164,11 +172,12 @@ export default function TradePage() {
           </span>
         </span>
       </div>
+      {/* CHANGED: type="text" inputMode="decimal" so keyboard delete/backspace works freely */}
       <input
-        type="number"
+        type="text"
+        inputMode="decimal"
         value={limitPrice}
-        step={currentPrice > 100 ? "0.01" : "0.0001"}
-        onChange={(e) => setLimitPrice(e.target.value)}
+        onChange={(e) => handleDecimalInput(e.target.value, setLimitPrice)}
         className="w-full bg-[#0D0D14] border border-mantle-purple/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple num"
         placeholder={`Enter limit price`}
       />
@@ -254,7 +263,14 @@ export default function TradePage() {
                     <label className="text-xs text-mantle-muted">Amount (USDT)</label>
                     <span className="text-xs text-mantle-muted">Available: <span className="text-white">${portfolio.cash.toFixed(2)}</span></span>
                   </div>
-                  <input type="number" value={buyAmount} min="10" onChange={(e) => setBuyAmount(e.target.value)} className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple num" />
+                  {/* CHANGED: type="text" inputMode="decimal" for free keyboard editing */}
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={buyAmount}
+                    onChange={(e) => handleDecimalInput(e.target.value, setBuyAmount)}
+                    className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple num"
+                  />
                 </div>
                 <div className="flex gap-1.5 mb-4">
                   {[25, 50, 75, 100].map((p) => (
@@ -288,7 +304,15 @@ export default function TradePage() {
                     <label className="text-xs text-mantle-muted">Amount ({tokenSymbol})</label>
                     <span className="text-xs text-mantle-muted">Available: <span className="text-white">{pos ? pos.size.toFixed(4) : "0"} {tokenSymbol}</span></span>
                   </div>
-                  <input type="number" value={sellAmount} min="0" step="0.0001" onChange={(e) => setSellAmount(e.target.value)} className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple num" placeholder={`Enter ${tokenSymbol} amount`} />
+                  {/* CHANGED: type="text" inputMode="decimal" for free keyboard editing */}
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={sellAmount}
+                    onChange={(e) => handleDecimalInput(e.target.value, setSellAmount)}
+                    className="w-full bg-[#0D0D14] border border-mantle-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mantle-purple num"
+                    placeholder={`Enter ${tokenSymbol} amount`}
+                  />
                 </div>
                 <div className="flex gap-1.5 mb-4">
                   {[25, 50, 75, 100].map((p) => (
